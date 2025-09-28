@@ -554,7 +554,7 @@ with tab3:
 
 st.divider()
 st.markdown(
-    "<p class='rtl'>تم التطوير بواسطة "
+    "<p class='rtl'>تم التطوير من قبل  "
     "<a style='text-decoration:none;color:#2ac408' href='https://www.linkedin.com/in/fares-hatahet/'>فارس حتاحت</a></p>",
     unsafe_allow_html=True,
 )
