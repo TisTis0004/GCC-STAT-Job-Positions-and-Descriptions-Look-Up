@@ -14,7 +14,7 @@ EXCEL_PATH = os.path.join(APP_DIR, "data.xlsx")
 
 # ---------- Helpers ----------
 def _to_str_code(x, width):
-    """Convert a numeric/str code to a zero-padded string of a given width."""
+    """تحويل أي قيمة رقمية/نصية إلى رمز مصفّر بطول محدد."""
     if pd.isna(x):
         return None
     try:
@@ -38,34 +38,18 @@ def _read_excel_bytes(path: str) -> bytes:
 
 
 def _build_lookups_from_df(df: pd.DataFrame):
-    """Lookups for names at each level + occupation titles."""
+    """جداول بحث للأسماء بكل مستوى + المسميات المهنية."""
     lookups = {
         "section": {
-            k: {"ar": a, "en": e}
-            for k, a, e in zip(
-                df["department"], df["description_ar"], df["description_en"]
-            )
-            if k
+            k: {"ar": a} for k, a in zip(df["department"], df["description_ar"]) if k
         },
-        "part": {
-            k: {"ar": a, "en": e}
-            for k, a, e in zip(df["sub1"], df["description_ar"], df["description_en"])
-            if k
-        },
+        "part": {k: {"ar": a} for k, a in zip(df["sub1"], df["description_ar"]) if k},
         "chapter": {
-            k: {"ar": a, "en": e}
-            for k, a, e in zip(df["sub2"], df["description_ar"], df["description_en"])
-            if k
+            k: {"ar": a} for k, a in zip(df["sub2"], df["description_ar"]) if k
         },
-        "cls": {
-            k: {"ar": a, "en": e}
-            for k, a, e in zip(df["sub3"], df["description_ar"], df["description_en"])
-            if k
-        },
+        "cls": {k: {"ar": a} for k, a in zip(df["sub3"], df["description_ar"]) if k},
         "occupation": {
-            k: {"ar": a, "en": e}
-            for k, a, e in zip(df["code"], df["description_ar"], df["description_en"])
-            if k
+            k: {"ar": a} for k, a in zip(df["code"], df["description_ar"]) if k
         },
     }
     return lookups
@@ -74,7 +58,7 @@ def _build_lookups_from_df(df: pd.DataFrame):
 def explain_code_hierarchy(code7: str, lookups: dict):
     code7 = re.sub(r"\D", "", str(code7 or "")).zfill(7)
     if not re.fullmatch(r"\d{7}", code7):
-        return None, "Invalid code. Please enter 7 digits."
+        return None, "رمز غير صالح. الرجاء إدخال 7 أرقام."
 
     d1, d2, d3, d4 = code7[0], code7[:2], code7[:3], code7[:4]
     seq = code7[4:]
@@ -102,7 +86,7 @@ REQUIRED_COLUMNS = [
     "description_en",
 ]
 
-# Optional name hints (still keep robust fallback)
+# أعمدة مرشحة للاكتشاف التلقائي
 CANDIDATE_CODE_COLS = [
     "code",
     "رمز",
@@ -128,7 +112,7 @@ CANDIDATE_AR_DESC_COLS = [
 def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     for c in REQUIRED_COLUMNS:
         if c not in df.columns:
-            raise RuntimeError(f"Missing column: {c}")
+            raise RuntimeError(f"عمود مفقود في الإكسل: {c}")
     df["department"] = df["department"].apply(lambda x: _to_str_code(x, 1))
     df["sub1"] = df["sub1"].apply(lambda x: _to_str_code(x, 2))
     df["sub2"] = df["sub2"].apply(lambda x: _to_str_code(x, 3))
@@ -138,13 +122,13 @@ def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _sheet_looks_like_section(name: str) -> bool:
-    """True for sheets like 'قسم 1', 'القسم 2', etc."""
+    """تكون صحيحة للأوراق مثل: 'قسم 1'، 'القسم 2'، ..."""
     n = (name or "").strip().lower()
     return "قسم" in n or n.startswith("القسم")
 
 
 def _is_code_token(val: str):
-    """Return normalized (code, width) if the first column cell represents a code of len 1..4 or 7; else (None, None)."""
+    """إرجاع (code,width) إن كانت الخانة تمثل رمزًا بطول 1..4 أو 7، وإلا (None,None)."""
     s = re.sub(r"\D", "", str(val or ""))
     if not s:
         return None, None
@@ -155,23 +139,17 @@ def _is_code_token(val: str):
 
 def _harvest_long_desc_from_section_sheet(sdf: pd.DataFrame) -> dict:
     """
-    Parse headerless two-column sheets like the screenshot:
-    - Col A: code tokens appear on some rows (1, 11, 111, 1111, 1111001, ...)
-    - Col B: a title on the code row, then one or more subsequent rows with long Arabic description
-             until the next code row.
-    Return a dict: { '7digit_code': 'long arabic description ...' }.
+    تحليل أوراق بدون رؤوس بعمودين:
+    - العمود A: يظهر فيه الرمز أحيانًا (1، 11، 111، 1111، 1111001...)
+    - العمود B: العنوان عند سطر الرمز، ثم أسطر تالية للوصف العربي المطوّل حتى الرمز التالي.
     """
     if sdf.shape[1] < 2:
         return {}
 
-    # take first two cols as A,B; no headers
     data = sdf.iloc[:, :2].copy()
     data.columns = ["A", "B"]
-    # Keep strings; replace NaN with empty strings for concatenation
-    data["A"] = data["A"].astype(str)
-    data["B"] = data["B"].astype(str)
-    data["A"] = data["A"].replace({"nan": ""})
-    data["B"] = data["B"].replace({"nan": ""})
+    data["A"] = data["A"].astype(str).replace({"nan": ""})
+    data["B"] = data["B"].astype(str).replace({"nan": ""})
 
     long_desc = {}
     current_code = None
@@ -191,18 +169,14 @@ def _harvest_long_desc_from_section_sheet(sdf: pd.DataFrame) -> dict:
     for _, row in data.iterrows():
         code_token, clen = _is_code_token(row["A"])
         if code_token:
-            # new section/code begins -> commit previous buffer
             _commit()
             current_code, current_len = code_token, clen
             continue
-
-        # Continuation line (no new code in A)
         if current_code:
             txt = (row["B"] or "").strip()
             if txt:
                 buffer_lines.append(txt)
 
-    # commit last buffer
     _commit()
     return long_desc
 
@@ -213,7 +187,6 @@ def _pick_code_col(sdf: pd.DataFrame):
         key = cc.strip().lower()
         if key in lower_map:
             return lower_map[key]
-    # Otherwise pick the column whose values look most like 7-digit codes
     best, best_score = None, -1
     for c in sdf.columns:
         series = sdf[c].apply(lambda x: _to_str_code(x, 7))
@@ -237,13 +210,11 @@ def _pick_ar_desc_col(sdf: pd.DataFrame, code_col: str):
 
 @st.cache_data(show_spinner=False)
 def _load_cached(excel_path: str, mtime: float):
-    """Cache key includes mtime so we only reload when the file changes."""
+    """التخزين المؤقت حسب توقيت آخر تعديل للملف."""
     excel_bytes = _read_excel_bytes(excel_path)
-
-    # Read ALL sheets (as strings)
     all_sheets = pd.read_excel(io.BytesIO(excel_bytes), sheet_name=None, dtype=str)
 
-    # --- Find the 'main' sheet (contains REQUIRED_COLUMNS) ---
+    # إيجاد الورقة الرئيسية
     main_df = None
     main_sheet_name = None
     for name, sdf in all_sheets.items():
@@ -253,17 +224,17 @@ def _load_cached(excel_path: str, mtime: float):
             break
     if main_df is None:
         raise RuntimeError(
-            "No sheet contains all required columns: " + ", ".join(REQUIRED_COLUMNS)
+            "لم يتم العثور على ورقة تحتوي جميع الأعمدة المطلوبة: "
+            + ", ".join(REQUIRED_COLUMNS)
         )
 
-    # Normalize + lookups from main sheet
     df = _normalize_df(main_df)
     lookups = _build_lookups_from_df(df)
 
-    # --- Build long Arabic description map ---
+    # بناء قاموس الوصف المطوّل بالعربية
     long_desc_ar = {}
 
-    # 1) Special parsing for Arabic 'قسم …' sheets (headerless two columns)
+    # 1) أوراق 'قسم …' الخاصة (عمودين بدون رؤوس)
     for name, sdf in all_sheets.items():
         if name == main_sheet_name:
             continue
@@ -274,14 +245,12 @@ def _load_cached(excel_path: str, mtime: float):
                 if prev is None or len(v) > len(prev):
                     long_desc_ar[k] = v
 
-    # 2) Generic fallback for any other sheet that *does* have headers
+    # 2) أي ورقة أخرى برؤوس أعمدة (محاولة عامة)
     for name, sdf in all_sheets.items():
         if name in (main_sheet_name,):
             continue
         if _sheet_looks_like_section(name):
-            # already handled above
             continue
-        # Try to find a code col and an Arabic long text column
         code_col = _pick_code_col(sdf)
         if not code_col:
             continue
@@ -309,8 +278,8 @@ def _load_cached(excel_path: str, mtime: float):
 def load_data_or_die():
     if not os.path.exists(EXCEL_PATH):
         st.error(
-            f"Excel file not found: {EXCEL_PATH}\n"
-            "Place your data.xlsx next to main.py with headers:\n"
+            f"لم يتم العثور على ملف الإكسل: {EXCEL_PATH}\n"
+            "ضع ملف data.xlsx بجانب main.py بهذه الرؤوس:\n"
             "department, sub1, sub2, sub3, code, description_ar, description_en"
         )
         st.stop()
@@ -319,149 +288,110 @@ def load_data_or_die():
 
 
 # ---------- UI ----------
-st.set_page_config(page_title="Job Code Lookup", page_icon="🔎", layout="centered")
+st.set_page_config(
+    page_title="الدليل الخليجي للتصنيف المهني", page_icon="🔎", layout="centered"
+)
 st.markdown(
     "<h1 style='text-align:center;'>الدليل الخليجي للتصنيف المهني</h1>",
     unsafe_allow_html=True,
 )
 
-# Global CSS for RTL/LTR alignment
+# CSS عام: اجعل التطبيق بالكامل RTL ومحاذاة يمين (بما فيها الجداول)
 st.markdown(
     """
 <style>
-/* Generic utility classes for alignment */
+html, body, [data-testid="stAppViewContainer"], .block-container {
+  direction: rtl;
+  text-align: right;
+}
 .rtl { direction: rtl; text-align: right; }
-.ltr { direction: ltr; text-align: left; }
-/* Make paragraphs and list items honor the direction too */
 .rtl p, .rtl li { direction: rtl; text-align: right; }
-.ltr p, .ltr li { direction: ltr; text-align: left; }
-/* Keep DataFrame tables LTR so numbers/sorting feel natural */
-div:where(.stDataFrame) table { direction: ltr; text-align: left; }
+
+/* اجعل جداول DataFrame RTL أيضًا */
+div:where(.stDataFrame) table {
+  direction: rtl;
+  text-align: right;
+}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 
-# Small helpers to render aligned text safely
+# دوال طباعة آمنة RTL
 def _escape(s):
     return _html.escape("" if s is None else str(s))
 
 
 def rtl_block(md_text: str):
-    """Render a block of (possibly multi-line) Arabic text RTL/right-aligned."""
     safe = _escape(md_text).replace("\n", "<br>")
     st.markdown(f'<div class="rtl">{safe}</div>', unsafe_allow_html=True)
 
 
-def ltr_block(md_text: str):
-    """Render a block of (possibly multi-line) English text LTR/left-aligned."""
-    safe = _escape(md_text).replace("\n", "<br>")
-    st.markdown(f'<div class="ltr">{safe}</div>', unsafe_allow_html=True)
-
-
 def rtl_kv(label, code, value):
-    """Right-aligned single line: **label** code — value (Arabic)."""
     md = f"**{_escape(label)}** {_escape(code)} — {_escape(value if value else '—')}"
     st.markdown(f'<div class="rtl">{md}</div>', unsafe_allow_html=True)
 
 
-def ltr_kv(label, code, value):
-    """Left-aligned single line: **Label** code — value (English)."""
-    md = f"**{_escape(label)}** {_escape(code)} — {_escape(value if value else '—')}"
-    st.markdown(f'<div class="ltr">{md}</div>', unsafe_allow_html=True)
-
-
-# Load data
+# تحميل البيانات
 lookups, df, long_desc_ar = load_data_or_die()
 
-tab1, tab2, tab3 = st.tabs(["🔢 Lookup by Code", "🧭 Browse", "🔍 Text Search"])
+# تبويبات عربية فقط
+tab1, tab2, tab3 = st.tabs(["🔢 البحث بالرمز", "🧭 التصفّح", "🔍 بحث نصّي"])
 
-# ====== TAB 1: Lookup by Code ======
+# ====== التبويب 1: البحث بالرمز ======
 with tab1:
-    code_input = st.text_input("Enter 7-digit code — أدخل الرمز:", value="")
+    code_input = st.text_input("أدخل رمزًا مكوّنًا من 7 خانات:", value="")
     if code_input:
         result, err = explain_code_hierarchy(code_input, lookups)
         if err:
             st.error(err)
         else:
             c7 = result["code7"]
-            st.subheader(f"Result: {c7}")
-            st.write("**Sequence / الترقيم:**", result["sequence"])
+            st.subheader(f"النتيجة: {c7}")
+            rtl_kv("الترقيم:", "", result["sequence"])
 
-            colA, colB = st.columns(2)
-            with colA:
-                st.markdown(
-                    '<div class="rtl"><h3>العربية (Arabic)</h3></div>',
-                    unsafe_allow_html=True,
-                )
-                rtl_kv(
-                    "القسم:",
-                    result["department"]["code"],
-                    (result["department"]["label"] or {}).get("ar"),
-                )
-                rtl_kv(
-                    "الجزء:",
-                    result["sub1"]["code"],
-                    (result["sub1"]["label"] or {}).get("ar"),
-                )
-                rtl_kv(
-                    "الباب:",
-                    result["sub2"]["code"],
-                    (result["sub2"]["label"] or {}).get("ar"),
-                )
-                rtl_kv(
-                    "الفصل:",
-                    result["sub3"]["code"],
-                    (result["sub3"]["label"] or {}).get("ar"),
-                )
-                rtl_kv("المسمى المهني:", "", (result["occupation"] or {}).get("ar"))
+            # عمود واحد بالعربية فقط
+            st.markdown(
+                "<h3 class='rtl'>البيانات التفصيلية</h3>", unsafe_allow_html=True
+            )
+            rtl_kv(
+                "القسم:",
+                result["department"]["code"],
+                (result["department"]["label"] or {}).get("ar"),
+            )
+            rtl_kv(
+                "الجزء:",
+                result["sub1"]["code"],
+                (result["sub1"]["label"] or {}).get("ar"),
+            )
+            rtl_kv(
+                "الباب:",
+                result["sub2"]["code"],
+                (result["sub2"]["label"] or {}).get("ar"),
+            )
+            rtl_kv(
+                "الفصل:",
+                result["sub3"]["code"],
+                (result["sub3"]["label"] or {}).get("ar"),
+            )
+            rtl_kv("المسمى المهني:", "", (result["occupation"] or {}).get("ar"))
 
-            with colB:
-                st.markdown(
-                    '<div class="ltr"><h3>English</h3></div>', unsafe_allow_html=True
-                )
-                ltr_kv(
-                    "Department:",
-                    result["department"]["code"],
-                    (result["department"]["label"] or {}).get("en"),
-                )
-                ltr_kv(
-                    "Sub1:",
-                    result["sub1"]["code"],
-                    (result["sub1"]["label"] or {}).get("en"),
-                )
-                ltr_kv(
-                    "Sub2:",
-                    result["sub2"]["code"],
-                    (result["sub2"]["label"] or {}).get("en"),
-                )
-                ltr_kv(
-                    "Sub3:",
-                    result["sub3"]["code"],
-                    (result["sub3"]["label"] or {}).get("en"),
-                )
-                ltr_kv("Occupation Title:", "", (result["occupation"] or {}).get("en"))
-
-            # Long Arabic description (if available)
             long_ar = long_desc_ar.get(c7)
             if long_ar:
                 st.markdown(
-                    '<div class="rtl"><h3>الوصف العربي المطوّل</h3></div>',
-                    unsafe_allow_html=True,
+                    "<h3 class='rtl'>الوصف العربي المطوّل</h3>", unsafe_allow_html=True
                 )
                 rtl_block(long_ar)
 
-# ====== TAB 2: Browse ======
+# ====== التبويب 2: التصفّح ======
 with tab2:
     st.markdown("تصفّح هرميًا: اختر المستوى ثم القيمة.")
 
-    # helpers
     def fmt(kind: str, code: str) -> str:
         lab = lookups.get(kind, {}).get(code) or {}
         ar = lab.get("ar") or "—"
-        en = lab.get("en") or "—"
-        return f"{code} — {ar} / {en}"
+        return f"{code} — {ar}"
 
     def sort_codes(codes):
         try:
@@ -475,7 +405,6 @@ with tab2:
         all_keys = list(lookups.get(kind, {}).keys())
         return sort_codes([k for k in all_keys if k and k.startswith(parent_code)])
 
-    # reset cascade when parent changes
     def on_change_d1():
         st.session_state.pop("sel_d2", None)
         st.session_state.pop("sel_d3", None)
@@ -491,24 +420,22 @@ with tab2:
         st.session_state.pop("sel_d4", None)
         st.session_state.pop("sel_occ_long", None)
 
-    # Department
     d1_codes = sort_codes(list({c for c in df["department"].dropna().unique()}))
     if not d1_codes:
         st.warning("لا توجد أقسام متاحة في البيانات.")
         st.stop()
 
     d1 = st.selectbox(
-        "القسم / Department (1-digit)",
+        "القسم (خانة واحدة):",
         d1_codes,
         format_func=lambda c: fmt("section", c),
         key="sel_d1",
         on_change=on_change_d1,
     )
 
-    # Sub1
     d2_codes = children_of("part", d1)
     d2 = st.selectbox(
-        "الجزء / Sub1 (2-digits)",
+        "الجزء (خانتان):",
         d2_codes,
         format_func=lambda c: fmt("part", c),
         key="sel_d2",
@@ -520,10 +447,9 @@ with tab2:
         st.session_state.pop("sel_d2", None)
         d2 = None
 
-    # Sub2
     d3_codes = children_of("chapter", st.session_state.get("sel_d2") or "")
     d3 = st.selectbox(
-        "الباب / Sub2 (3-digits)",
+        "الباب (3 خانات):",
         d3_codes,
         format_func=lambda c: fmt("chapter", c),
         key="sel_d3",
@@ -535,10 +461,9 @@ with tab2:
         st.session_state.pop("sel_d3", None)
         d3 = None
 
-    # Sub3
     d4_codes = children_of("cls", st.session_state.get("sel_d3") or "")
     d4 = st.selectbox(
-        "الفصل / Sub3 (4-digits)",
+        "الفصل (4 خانات):",
         d4_codes,
         format_func=lambda c: fmt("cls", c),
         key="sel_d4",
@@ -549,8 +474,7 @@ with tab2:
         st.session_state.pop("sel_d4", None)
         d4 = None
 
-    # Occupations
-    st.markdown("#### Occupations under this Class / المسميات ضمن هذا الفصل")
+    st.markdown("#### المسميات ضمن هذا الفصل")
     if d4:
         occ_map = lookups.get("occupation", {})
         occ_codes = sort_codes([c for c in occ_map.keys() if c and c.startswith(d4)])
@@ -561,55 +485,50 @@ with tab2:
             rows = []
             for c in occ_codes:
                 lab = occ_map.get(c, {})
-                rows.append(
-                    {
-                        "code": c,
-                        "description_ar": lab.get("ar", "—"),
-                        "description_en": lab.get("en", "—"),
-                    }
-                )
-            subset = pd.DataFrame(rows).sort_values("code").set_index("code")
+                rows.append({"الرمز": c, "الوصف": lab.get("ar", "—")})
+            subset = pd.DataFrame(rows).sort_values("الرمز").set_index("الرمز")
             st.dataframe(subset, use_container_width=True)
 
             sel_occ = st.selectbox(
                 "اختر مسمى مهني لعرض الوصف المطوّل:",
                 occ_codes,
-                format_func=lambda c: f"{c} — {occ_map.get(c, {}).get('ar', '—')} / {occ_map.get(c, {}).get('en', '—')}",
+                format_func=lambda c: f"{c} — {occ_map.get(c, {}).get('ar', '—')}",
                 key="sel_occ_long",
             )
             if sel_occ:
                 st.markdown(
-                    '<div class="rtl"><h3>الوصف العربي المطوّل</h3></div>',
-                    unsafe_allow_html=True,
+                    "<h3 class='rtl'>الوصف العربي المطوّل</h3>", unsafe_allow_html=True
                 )
                 rtl_block(long_desc_ar.get(sel_occ, "— لا يوجد وصف مطوّل —"))
     else:
         st.info("اختر فصلًا لعرض المسميات المهنية تحته.")
 
-# ====== TAB 3: Text Search ======
+# ====== التبويب 3: بحث نصّي ======
 with tab3:
-    q = st.text_input("ابحث نصيًا بالعربية أو الإنجليزية — Search (Arabic/English):")
+    q = st.text_input("ابحث نصيًا (بالعربية):")
     if q:
         q_norm = q.strip()
-        mask = df["description_ar"].astype(str).str.contains(
-            q_norm, case=False, na=False
-        ) | df["description_en"].astype(str).str.contains(q_norm, case=False, na=False)
+        mask = (
+            df["description_ar"].astype(str).str.contains(q_norm, case=False, na=False)
+        )
         res = df[mask][
-            [
-                "department",
-                "sub1",
-                "sub2",
-                "sub3",
-                "code",
-                "description_ar",
-                "description_en",
-            ]
+            ["department", "sub1", "sub2", "sub3", "code", "description_ar"]
         ].drop_duplicates()
         if res.empty:
             st.warning("لا نتائج مطابقة.")
         else:
-            st.write(f"**النتائج: {len(res)}**")
-            st.dataframe(res, use_container_width=True)
+            st.write(f"**عدد النتائج: {len(res)}**")
+            res_show = res.rename(
+                columns={
+                    "department": "القسم",
+                    "sub1": "الجزء",
+                    "sub2": "الباب",
+                    "sub3": "الفصل",
+                    "code": "الرمز",
+                    "description_ar": "الوصف",
+                }
+            ).set_index("الرمز")
+            st.dataframe(res_show, use_container_width=True)
 
             codes_in_results = sorted(
                 [
@@ -623,18 +542,19 @@ with tab3:
                 sel_code = st.selectbox(
                     "اعرض الوصف المطوّل للمسمى:",
                     codes_in_results,
-                    format_func=lambda c: f"{c} — {occ_map.get(c, {}).get('ar', '—')} / {occ_map.get(c, {}).get('en', '—')}",
+                    format_func=lambda c: f"{c} — {occ_map.get(c, {}).get('ar', '—')}",
                     key="sel_code_from_search",
                 )
                 if sel_code:
                     st.markdown(
-                        '<div class="rtl"><h3>الوصف العربي المطوّل</h3></div>',
+                        "<h3 class='rtl'>الوصف العربي المطوّل</h3>",
                         unsafe_allow_html=True,
                     )
                     rtl_block(long_desc_ar.get(sel_code, "— لا يوجد وصف مطوّل —"))
 
 st.divider()
 st.markdown(
-    "<p>Developed by <a style='text-decoration:None;color:#2ac408' href='https://www.linkedin.com/in/fares-hatahet/'>Fares Hatahet</a></p>",
+    "<p class='rtl'>تم التطوير بواسطة "
+    "<a style='text-decoration:none;color:#2ac408' href='https://www.linkedin.com/in/fares-hatahet/'>فارس حتاحت</a></p>",
     unsafe_allow_html=True,
 )
